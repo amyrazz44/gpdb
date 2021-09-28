@@ -217,16 +217,13 @@ static TupleRemapInfo **BuildFieldRemapInfo(TupleDesc tupledesc,
 
 /*
  * Receive a tuple from a query, and send it to the designated shm_mq.
- *
- * Returns TRUE if successful, FALSE if shm_mq has been detached.
  */
-static bool
+static void
 tqueueReceiveSlot(TupleTableSlot *slot, DestReceiver *self)
 {
 	TQueueDestReceiver *tqueue = (TQueueDestReceiver *) self;
 	TupleDesc	tupledesc = slot->tts_tupleDescriptor;
 	HeapTuple	tuple;
-	shm_mq_result result;
 
 	/*
 	 * If first time through, compute remapping info for the top-level fields.
@@ -271,7 +268,7 @@ tqueueReceiveSlot(TupleTableSlot *slot, DestReceiver *self)
 		for (i = 0; i < tupledesc->natts; i++)
 		{
 			/* Ignore nulls and types that don't need special handling. */
-			if (slot->tts_isnull[i] || remapinfo[i] == NULL)
+			if (slot->PRIVATE_tts_isnull[i] || remapinfo[i] == NULL)
 				continue;
 
 			/* Switch to temporary memory context to avoid leaking. */
@@ -286,7 +283,7 @@ tqueueReceiveSlot(TupleTableSlot *slot, DestReceiver *self)
 			}
 
 			/* Examine the value. */
-			TQExamine(tqueue, remapinfo[i], slot->tts_values[i]);
+			TQExamine(tqueue, remapinfo[i], slot->PRIVATE_tts_values[i]);
 		}
 
 		/* If we used the temp context, reset it and restore prior context. */
@@ -306,17 +303,17 @@ tqueueReceiveSlot(TupleTableSlot *slot, DestReceiver *self)
 
 	/* Send the tuple itself. */
 	tuple = ExecMaterializeSlot(slot);
-	result = shm_mq_send(tqueue->queue, tuple->t_len, tuple->t_data, false);
+	shm_mq_send(tqueue->queue, tuple->t_len, tuple->t_data, false);
 
 	/* Check for failure. */
 	if (result == SHM_MQ_DETACHED)
-		return false;
+		return;
 	else if (result != SHM_MQ_SUCCESS)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("could not send tuple to shared-memory queue")));
 
-	return true;
+	return;
 }
 
 /*
@@ -434,7 +431,6 @@ TQExamineRecord(TQueueDestReceiver *tqueue, RecordRemapInfo *remapinfo,
 		isnull = (bool *) palloc(tupledesc->natts * sizeof(bool));
 		tdata.t_len = HeapTupleHeaderGetDatumLength(tup);
 		ItemPointerSetInvalid(&(tdata.t_self));
-		tdata.t_tableOid = InvalidOid;
 		tdata.t_data = tup;
 		heap_deform_tuple(&tdata, tupledesc, values, isnull);
 
@@ -527,7 +523,7 @@ TQSendRecordInfo(TQueueDestReceiver *tqueue, int32 typmod, TupleDesc tupledesc)
 		ctl.hcxt = tqueue->mycontext;
 		tqueue->recordhtab = hash_create("tqueue sender record type hashtable",
 										 100, &ctl,
-										 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+										 HASH_ELEM | HASH_CONTEXT);
 	}
 
 	/* Have we already seen this record type?  If not, must report it. */
@@ -749,7 +745,6 @@ TupleQueueHandleDataMessage(TupleQueueReader *reader,
 	 * (which had better be sufficiently aligned).
 	 */
 	ItemPointerSetInvalid(&htup.t_self);
-	htup.t_tableOid = InvalidOid;
 	htup.t_len = nbytes;
 	htup.t_data = data;
 
@@ -1025,7 +1020,6 @@ TQRemapRecord(TupleQueueReader *reader, RecordRemapInfo *remapinfo,
 
 		/* Copy tuple, possibly remapping contained fields. */
 		ItemPointerSetInvalid(&htup.t_self);
-		htup.t_tableOid = InvalidOid;
 		htup.t_len = HeapTupleHeaderGetDatumLength(tup);
 		htup.t_data = tup;
 		atup = TQRemapTuple(reader,
@@ -1106,7 +1100,7 @@ TupleQueueHandleControlMessage(TupleQueueReader *reader, Size nbytes,
 		ctl.hcxt = reader->mycontext;
 		reader->typmodmap = hash_create("tqueue receiver record type hashtable",
 										100, &ctl,
-										HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+										HASH_ELEM | HASH_CONTEXT);
 	}
 
 	/* Create map entry. */

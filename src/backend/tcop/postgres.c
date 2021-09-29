@@ -90,6 +90,7 @@
 #include "cdb/cdbdtxcontextinfo.h"
 #include "cdb/cdbdisp_query.h"
 #include "cdb/cdbdispatchresult.h"
+#include "cdb/cdbendpoint.h"
 #include "cdb/cdbgang.h"
 #include "cdb/ml_ipc.h"
 #include "utils/guc.h"
@@ -3935,29 +3936,32 @@ ProcessInterrupts(const char* filename, int lineno)
 		 */
 		if (!DoingCommandRead)
 		{
+			StringInfoData cancel_msg_str;
+
 			ImmediateInterruptOK = false;		/* not idle anymore */
+
 			LockErrorCleanup();
 			DisableNotifyInterrupt();
 			DisableCatchupInterrupt();
 
+			initStringInfo(&cancel_msg_str);
+			if (HasCancelMessage())
+			{
+				char *buffer = palloc0(MAX_CANCEL_MSG);
+
+				GetCancelMessage(&buffer, MAX_CANCEL_MSG);
+				appendStringInfo(&cancel_msg_str, ": \"%s\"", buffer);
+				pfree(buffer);
+			}
+
 			if (Gp_role == GP_ROLE_EXECUTE)
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_OPERATION_CANCELED),
-						 errmsg("canceling MPP operation")));
-			else if (HasCancelMessage())
-			{
-				char   *buffer = palloc0(MAX_CANCEL_MSG);
-
-				GetCancelMessage(&buffer, MAX_CANCEL_MSG);
-				ereport(ERROR,
-						(errcode(ERRCODE_QUERY_CANCELED),
-						 errmsg("canceling statement due to user request: \"%s\"",
-								buffer)));
-			}
+						 errmsg("canceling MPP operation%s", cancel_msg_str.data)));
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_QUERY_CANCELED),
-						 errmsg("canceling statement due to user request")));
+						 errmsg("canceling statement due to user request%s", cancel_msg_str.data)));
 		}
 	}
 	/* If we get here, do nothing (probably, QueryCancelPending was reset) */
@@ -4563,7 +4567,7 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 static void
 check_forbidden_in_gpdb_handlers(char firstchar)
 {
-	if (am_ftshandler || IsFaultHandler)
+	if (am_ftshandler || am_faulthandler)
 	{
 		switch (firstchar)
 		{
@@ -4580,6 +4584,15 @@ check_forbidden_in_gpdb_handlers(char firstchar)
 	}
 }
 
+static void
+forbidden_in_retrieve_handler(char firstchar)
+{
+	if (am_cursor_retrieve_handler)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("protocol '%c' is not supported in a GPDB parallel retrieve cursor connection",
+						firstchar)));
+}
 
 /* ----------------------------------------------------------------
  * PostgresMain
@@ -4890,7 +4903,7 @@ PostgresMain(int argc, char *argv[],
 	}
 
 	/* Also send GPDB QE-backend startup info (motion listener, version). */
-	if (!(am_ftshandler || IsFaultHandler) && Gp_role == GP_ROLE_EXECUTE)
+	if (!(am_ftshandler || am_faulthandler) && Gp_role == GP_ROLE_EXECUTE)
 	{
 #ifdef FAULT_INJECTOR
 		if (SIMPLE_FAULT_INJECTOR("send_qe_details_init_backend") != FaultInjectorTypeSkip)
@@ -5248,7 +5261,7 @@ PostgresMain(int argc, char *argv[],
 						exec_replication_command(query_string);
 					else if (am_ftshandler)
 						HandleFtsMessage(query_string);
-					else if (IsFaultHandler)
+					else if (am_faulthandler)
 						HandleFaultMessage(query_string);
 					else
 						exec_simple_query(query_string);
@@ -5528,6 +5541,7 @@ PostgresMain(int argc, char *argv[],
 
 			case 'F':			/* fastpath function call */
 				forbidden_in_wal_sender(firstchar);
+				forbidden_in_retrieve_handler(firstchar);
 
 				/* Set statement_timestamp() */
 				SetCurrentStatementStartTimestamp();

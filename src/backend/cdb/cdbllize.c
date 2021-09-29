@@ -995,7 +995,6 @@ makeFlow(FlowType flotype, int numsegments)
 	return flow;
 }
 
-
 /*
  * Create a flow for the given Plan node based on the flow in its
  * lefttree (outer) plan.  Partitioning information is preserved.

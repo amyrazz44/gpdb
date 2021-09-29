@@ -462,3 +462,9 @@ CREATE FUNCTION cdblegacyhash_cash(money) RETURNS int4 LANGUAGE internal IMMUTAB
 CREATE FUNCTION cdblegacyhash_complex(complex) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT AS 'cdblegacyhash_complex' WITH (OID=6169, DESCRIPTION="Legacy cdbhash function");
 CREATE FUNCTION cdblegacyhash_uuid(uuid) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT AS 'cdblegacyhash_uuid' WITH (OID=6170, DESCRIPTION="Legacy cdbhash function");
 CREATE FUNCTION cdblegacyhash_anyenum(anyenum) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT AS 'cdblegacyhash_anyenum' WITH (OID=6171, DESCRIPTION="Legacy cdbhash function");
+
+-- For parallel retrieve cursor.
+CREATE FUNCTION gp_endpoints(OUT dbid int4, OUT auth_token text, OUT cursorname text, OUT sessionid int4, OUT hostname text, OUT port int4, OUT userid oid, OUT state text, OUT endpointname text) RETURNS SETOF record LANGUAGE internal VOLATILE AS 'gp_endpoints' WITH (OID=6172,  DESCRIPTION="endpoints information on the cluster visible to the user");
+
+
+CREATE FUNCTION gp_segment_endpoints(OUT auth_token text, OUT databaseid int4, OUT senderpid int4, OUT receiverpid int4, OUT state text, OUT dbid int4, OUT sessionid int4, OUT userid oid, OUT endpointname text, OUT cursorname text) RETURNS SETOF record LANGUAGE internal VOLATILE AS 'gp_segment_endpoints' WITH (OID=6173,  DESCRIPTION="endpoints information on the segment visible to the user");

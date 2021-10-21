@@ -200,6 +200,10 @@ cdbparallelize(PlannerInfo *root, Plan *plan, Query *query)
 	 */
 	prescan(plan, context);
 
+	if (root->glob->is_parallel_cursor)
+	{
+		context->dispatchParallel = true;
+	}
 	if (context->dispatchParallel || context->initPlanParallel)
 	{
 		/*

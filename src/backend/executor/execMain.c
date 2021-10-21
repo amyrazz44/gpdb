@@ -427,6 +427,7 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	/*
 	 * Handling of the Slice table depends on context.
 	 */
+
 	if (Gp_role == GP_ROLE_DISPATCH &&
 		(queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL ||
 		 queryDesc->plannedstmt->nMotionNodes > 0))
@@ -1694,7 +1695,40 @@ ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
 		PreventCommandIfReadOnly(CreateCommandTag((Node *) plannedstmt));
 	}
 }
+static void
+adjust_root_slice_for_parallel_retrieve_cursor(Flow *flow, Slice *root_slice)
+{
+	int numsegments;
 
+	if (flow->flotype == FLOW_SINGLETON &&
+		(flow->locustype == CdbLocusType_Entry ||
+		flow->locustype == CdbLocusType_General))
+	{
+		/*
+		 * For these scenarios, parallel retrieve cursor needs to run on entrydb
+		 * since endpoint QE needs to interact with the retrieve connections.
+		 */
+		numsegments = 1;
+		root_slice->gangType = GANGTYPE_ENTRYDB_READER;
+	}
+	else if (flow->locustype == CdbLocusType_SegmentGeneral)
+	{
+		/*
+		 * queries to replicated table run on a single segment.
+		 */
+		numsegments = flow->numsegments;
+		root_slice->gangType = GANGTYPE_SINGLETON_READER;
+	}
+	else
+	{
+		/*
+		 * queries to non-replicated table run on segments.
+		 */
+		numsegments = flow->numsegments;
+		root_slice->gangType = GANGTYPE_PRIMARY_READER;
+	}
+	FillSliceGangInfo(root_slice, numsegments);
+}
 
 /* ----------------------------------------------------------------
  *		InitPlan
@@ -2052,7 +2086,20 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * Initialize the slice table.
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		bool isParallelRetrieveCursor = (queryDesc->ddesc &&
+										queryDesc->ddesc->parallelCursorName &&
+										queryDesc->ddesc->parallelCursorName[0]);
+
 		FillSliceTable(estate, plannedstmt);
+		if (isParallelRetrieveCursor)
+		{
+			Slice *root_slice = (Slice*)list_nth(estate->es_sliceTable->slices, 0);
+			Flow  *flow = plannedstmt->planTree->flow;
+			adjust_root_slice_for_parallel_retrieve_cursor(flow, root_slice);
+		}
+	}
+		
 
 	/*
 	 * Initialize private state information for each SubPlan.  We must do this

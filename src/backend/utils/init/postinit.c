@@ -1138,6 +1138,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	if (am_cursor_retrieve_handler)
 	{
 		Gp_role = GP_ROLE_UTILITY;
+		Gp_session_role = GP_ROLE_UTILITY;
 
 		/* Sanity check for security: This should not happen but in case ... */
 		if (!retrieve_conn_authenticated)

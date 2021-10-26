@@ -468,4 +468,4 @@ CREATE FUNCTION gp_endpoints(OUT dbid int4, OUT auth_token text, OUT cursorname 
 
 CREATE FUNCTION gp_segment_endpoints(OUT auth_token text, OUT databaseid int4, OUT senderpid int4, OUT receiverpid int4, OUT state text, OUT dbid int4, OUT sessionid int4, OUT userid oid, OUT endpointname text, OUT cursorname text) RETURNS SETOF record LANGUAGE internal VOLATILE AS 'gp_segment_endpoints' WITH (OID=6173,  DESCRIPTION="endpoints information on the segment visible to the user");
 
-CREATE FUNCTION gp_wait_parallel_retrieve_cursor(text, int4) RETURNS bool LANGUAGE internal VOLATILE NO SQL AS 'gp_wait_parallel_retrieve_cursor' WITH (OID=6174,  DESCRIPTION="wait until all endpoint of this parallel retrieve cursor has been retrieved finished");
+CREATE FUNCTION gp_wait_parallel_retrieve_cursor(IN cursorname text, IN timeout_sec int4, OUT finished bool) RETURNS bool LANGUAGE internal VOLATILE NO SQL AS 'gp_wait_parallel_retrieve_cursor' WITH (OID=6174,  DESCRIPTION="wait until all endpoint of this parallel retrieve cursor has been retrieved finished");

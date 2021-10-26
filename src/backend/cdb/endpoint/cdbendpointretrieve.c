@@ -447,7 +447,9 @@ attach_receiver_mq(RetrieveExecEntry * entry, dsm_handle dsmHandle)
 	tupdescnode = (TupleDescNode *) deserializeNode(lookup_space, td_len);
 	td = tupdescnode->tuple;
 	if (entry->retrieveTs != NULL)
+	{
 		ExecClearTuple(entry->retrieveTs);
+	}
 	else
 	{
 		entry->retrieveTs = MakeTupleTableSlot();

@@ -243,9 +243,9 @@ transformTopLevelStmt(ParseState *pstate, Node *parseTree)
 	if (am_cursor_retrieve_handler != IsA(parseTree, RetrieveStmt))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("This is %s a retrieve connection, but query is %sRETRIEVE.",
-					   am_cursor_retrieve_handler ? "" : "not ",
-					   IsA(parseTree, RetrieveStmt) ? "" : "not ")));
+				errmsg("This is %s a retrieve connection, but the query is %s a RETRIEVE.",
+					   am_cursor_retrieve_handler ? "" : "not",
+					   IsA(parseTree, RetrieveStmt) ? "" : "not")));
 
 	if (IsA(parseTree, SelectStmt))
 	{

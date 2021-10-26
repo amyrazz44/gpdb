@@ -64,7 +64,7 @@ class ConnectionInfo(object):
 
         query = ("SELECT content, hostname, port, role FROM gp_segment_configuration")
 
-        con = pg.connect(dbname="postgres")
+        con = pygresql.pg.connect(dbname="postgres")
         self._conn_map = con.query(query).getresult()
         con.close()
 

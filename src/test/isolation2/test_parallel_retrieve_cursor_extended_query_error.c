@@ -311,7 +311,7 @@ main(int argc, char **argv)
 	pgport = NULL;				/* port of the backend */
 	pgoptions = NULL;			/* special options to start up the backend
 								 * server */
-	pgoptions_utility_mode = "-c gp_role=utility";
+	pgoptions_utility_mode = "-c gp_session_role=utility";
 	pgtty = NULL;				/* debugging tty for the backend */
 
 	/* make a connection to the database */

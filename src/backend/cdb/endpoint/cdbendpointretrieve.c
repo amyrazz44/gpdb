@@ -449,7 +449,10 @@ attach_receiver_mq(RetrieveExecEntry * entry, dsm_handle dsmHandle)
 	if (entry->retrieveTs != NULL)
 		ExecClearTuple(entry->retrieveTs);
 	else
+	{
 		entry->retrieveTs = MakeTupleTableSlot();
+		ExecSetSlotDescriptor(entry->retrieveTs, td);
+	}
 
 	/* Create the tuple queue reader. */
 	entry->tqReader = CreateTupleQueueReader(entry->mqHandle, td); /* TODO: is td correct? */

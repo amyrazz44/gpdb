@@ -1702,7 +1702,8 @@ adjust_root_slice_for_parallel_retrieve_cursor(Flow *flow, Slice *root_slice)
 
 	if (flow->flotype == FLOW_SINGLETON &&
 		(flow->locustype == CdbLocusType_Entry ||
-		flow->locustype == CdbLocusType_General))
+		flow->locustype == CdbLocusType_General ||
+		flow->locustype == CdbLocusType_SingleQE))
 	{
 		/*
 		 * For these scenarios, parallel retrieve cursor needs to run on entrydb

@@ -1253,7 +1253,8 @@ pg_cursor(PG_FUNCTION_ARGS)
 		values[3] = BoolGetDatum(portal->cursorOptions & CURSOR_OPT_BINARY);
 		values[4] = BoolGetDatum(portal->cursorOptions & CURSOR_OPT_SCROLL);
 		values[5] = TimestampTzGetDatum(portal->creation_time);
-		values[6] = BoolGetDatum(PortalIsParallelRetrieveCursor(portal));
+		bool is_parallel = PortalIsParallelRetrieveCursor(portal) ? true : false;
+		values[6] = BoolGetDatum(is_parallel);
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}

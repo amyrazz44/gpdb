@@ -70,9 +70,7 @@ DECLARE
 *R: @pre_run 'set_endpoint_variable @ENDPOINT2': RETRIEVE 10 FROM ENDPOINT "@ENDPOINT2";
 #-1retrieve> FATAL:  Retrieve auth token is invalid
 
-
 #0retrieve> FATAL:  Retrieve auth token is invalid
-
 
  a  
 ----
@@ -89,7 +87,6 @@ DECLARE
 (10 rows)
 
 #2retrieve> FATAL:  Retrieve auth token is invalid
-
 -- cancel all 3 sessions
 4: select pg_cancel_backend(pid) from pg_stat_activity, gp_endpoints() where sess_id = sessionid AND (cursorname ='c1' or cursorname='c2' or cursorname='c3');
  pg_cancel_backend 
@@ -115,10 +112,10 @@ ROLLBACK
 1q: ... <quitting>
 2q: ... <quitting>
 3q: ... <quitting>
--1Rq:FAILED:  Sessions not started cannot be quit
+-1Rq: ... <quitting>
 1Rq: ... <quitting>
-2Rq:FAILED:  Sessions not started cannot be quit
-3Rq:FAILED:  Sessions not started cannot be quit
+2Rq: ... <quitting>
+3Rq: FAILED:  Sessions not started cannot be quit
 
 --------- Test3: Basic test for PARALLEL RETRIEVE CURSOR on replicated table
 1: BEGIN;
@@ -164,9 +161,7 @@ DECLARE
 *R: @pre_run 'set_endpoint_variable @ENDPOINT3': RETRIEVE 10 FROM ENDPOINT "@ENDPOINT3";
 #-1retrieve> FATAL:  Retrieve auth token is invalid
 
-
 #0retrieve> FATAL:  Retrieve auth token is invalid
-
 
  a  
 ----
@@ -183,7 +178,6 @@ DECLARE
 (10 rows)
 
 #2retrieve> FATAL:  Retrieve auth token is invalid
-
 -- cancel all 3 sessions
 4: select pg_cancel_backend(pid) from pg_stat_activity, gp_endpoints() where sess_id = sessionid AND (cursorname ='c1' or cursorname='c2' or cursorname='c3');
  pg_cancel_backend 
@@ -209,10 +203,10 @@ ROLLBACK
 1q: ... <quitting>
 2q: ... <quitting>
 3q: ... <quitting>
--1Rq:FAILED:  Sessions not started cannot be quit
+-1Rq: ... <quitting>
 1Rq: ... <quitting>
-2Rq:FAILED:  Sessions not started cannot be quit
-3Rq:FAILED:  Sessions not started cannot be quit
+2Rq: ... <quitting>
+3Rq: FAILED:  Sessions not started cannot be quit
 
 --------- Test4: Basic test for PARALLEL RETRIEVE CURSOR on replicated table
 1: BEGIN;
@@ -258,9 +252,7 @@ DECLARE
 *R: @pre_run 'set_endpoint_variable @ENDPOINT4': RETRIEVE 10 FROM ENDPOINT "@ENDPOINT4";
 #-1retrieve> FATAL:  Retrieve auth token is invalid
 
-
 #0retrieve> FATAL:  Retrieve auth token is invalid
-
 
  a  
 ----
@@ -277,7 +269,6 @@ DECLARE
 (10 rows)
 
 #2retrieve> FATAL:  Retrieve auth token is invalid
-
 -- cancel all 3 sessions
 4: select pg_cancel_backend(pid) from pg_stat_activity, gp_endpoints() where sess_id = sessionid AND (cursorname ='c1' or cursorname='c2' or cursorname='c3');
  pg_cancel_backend 

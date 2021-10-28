@@ -54,7 +54,6 @@ DECLARE
 *R: @pre_run 'set_endpoint_variable @ENDPOINT1' : RETRIEVE 10 FROM ENDPOINT "@ENDPOINT1";
 #-1retrieve> FATAL:  Retrieve auth token is invalid
 
-
  a  
 ----
  2  
@@ -98,7 +97,6 @@ DECLARE
 (10 rows)
 *R: @pre_run 'set_endpoint_variable @ENDPOINT2' : RETRIEVE ALL FROM ENDPOINT "@ENDPOINT2";
 #-1retrieve> FATAL:  Retrieve auth token is invalid
-
 
  a  
 ----
@@ -296,7 +294,6 @@ DECLARE
 *R: @pre_run 'set_endpoint_variable @ENDPOINT4' : RETRIEVE 10 FROM ENDPOINT "@ENDPOINT4";
 #-1retrieve> FATAL:  Retrieve auth token is invalid
 
-
  a  
 ----
  2  
@@ -340,7 +337,6 @@ DECLARE
 (10 rows)
 *R: @pre_run 'set_endpoint_variable @ENDPOINT5' : RETRIEVE ALL FROM ENDPOINT "@ENDPOINT5";
 #-1retrieve> FATAL:  Retrieve auth token is invalid
-
 
  a  
 ----

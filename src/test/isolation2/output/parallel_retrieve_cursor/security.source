@@ -19,7 +19,6 @@ CREATE
 0R: SELECT 1;
 #0retrieve> FATAL:  Retrieve auth token is invalid
 
-
 -- Test: Declare a cursor
 1: BEGIN;
 BEGIN
@@ -95,7 +94,6 @@ ERROR:  The endpoint tktt223344556677889900112233445566 does not exist in the se
 -- Retrieve data.
 *R: @pre_run 'set_endpoint_variable @ENDPOINT1': RETRIEVE 10 FROM ENDPOINT "@ENDPOINT1";
 #-1retrieve> FATAL:  Retrieve auth token is invalid
-
 
  a  
 ----

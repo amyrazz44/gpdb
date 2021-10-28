@@ -988,8 +988,8 @@ DESCR("Legacy cdbhash function");
 DATA(insert OID = 6172 ( gp_endpoints  PGNSP PGUID 12 1 1000 0 0 f f f f f t v 0 0 2249 "" "{23,25,25,23,25,23,26,25,25}" "{o,o,o,o,o,o,o,o,o}" "{dbid,auth_token,cursorname,sessionid,hostname,port,userid,state,endpointname}" _null_ gp_endpoints _null_ _null_ _null_ n a ));
 DESCR("endpoints information on the cluster visible to the user");
 
-/* gp_segment_endpoints(OUT auth_token text, OUT databaseid int4, OUT senderpid int4, OUT receiverpid int4, OUT state text, OUT dbid int4, OUT sessionid int4, OUT userid oid, OUT endpointname text, OUT cursorname text) => SETOF record */
-DATA(insert OID = 6173 ( gp_segment_endpoints  PGNSP PGUID 12 1 1000 0 0 f f f f f t v 0 0 2249 "" "{25,23,23,23,25,23,23,26,25,25}" "{o,o,o,o,o,o,o,o,o,o}" "{auth_token,databaseid,senderpid,receiverpid,state,dbid,sessionid,userid,endpointname,cursorname}" _null_ gp_segment_endpoints _null_ _null_ _null_ n a ));
+/* gp_segment_endpoints(OUT auth_token text, OUT databaseid int4, OUT senderpid int4, OUT receiverpid int4, OUT state text, OUT dbid oid, OUT sessionid int4, OUT userid oid, OUT endpointname text, OUT cursorname text) => SETOF record */
+DATA(insert OID = 6173 ( gp_segment_endpoints  PGNSP PGUID 12 1 1000 0 0 f f f f f t v 0 0 2249 "" "{25,23,23,23,25,26,23,26,25,25}" "{o,o,o,o,o,o,o,o,o,o}" "{auth_token,databaseid,senderpid,receiverpid,state,dbid,sessionid,userid,endpointname,cursorname}" _null_ gp_segment_endpoints _null_ _null_ _null_ n a ));
 DESCR("endpoints information on the segment visible to the user");
 
 /* gp_wait_parallel_retrieve_cursor(IN cursorname text, IN timeout_sec int4, OUT finished bool) => bool */

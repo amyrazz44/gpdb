@@ -648,7 +648,7 @@ retrieve_cancel_action(RetrieveExecEntry * entry, char *msg)
 
 	LWLockAcquire(ParallelCursorEndpointLock, LW_EXCLUSIVE);
 
-	endpoint = get_endpoint_from_retrieve_exec_entry(entry, false);
+	endpoint = get_endpoint_from_retrieve_exec_entry(entry, true);
 
 	if (endpoint != NULL &&
 		endpoint->receiverPid == MyProcPid &&

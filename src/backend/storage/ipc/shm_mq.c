@@ -777,7 +777,7 @@ shm_mq_send_bytes(shm_mq_handle *mqh, Size nbytes, void *data, bool nowait,
 		{
 			shm_mq_result res;
 
-			if(QueryFinishPending)
+			if (QueryFinishPending)
 			{
 				*bytes_written = sent;
 				return SHM_MQ_QUERY_FINISH;

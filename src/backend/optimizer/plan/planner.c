@@ -228,7 +228,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * support pl/<lang> statements (relevant when they are planned on the segments).
 	 * For these reasons, restrict to using ORCA on the master QD processes only.
 	 * 
-	 * Don't use orca for PARALLEL RETRIEVE CURSOR.
+	 * PARALLEL RETRIEVE CURSOR is not supported by ORCA yet.
 	 */
 	if (optimizer &&
 		GP_ROLE_DISPATCH == Gp_role &&

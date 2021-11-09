@@ -160,7 +160,6 @@ class GlobalShellExecutor(object):
                     lines = output.splitlines()
                     return lines[len(sh_cmd.splitlines()):len(lines) - 1]
 
-
             if not r and not e:
                 self.terminate(True)
                 raise GlobalShellExecutor.ExecutionError("Timeout happened to the bash daemon, see %s for details." % self.bash_log_file.name)
@@ -173,7 +172,7 @@ class GlobalShellExecutor(object):
         if self.sh_proc == None:
             raise GlobalShellExecutor.ExecutionError("The bash daemon has been terminated abnormally, see %s for details." % self.bash_log_file.name)
 
-        # get the output of shell commmand
+        # get the output of shell command
         output = self.__run_command(sh_cmd)
         if is_trip_output_end_blanklines:
             for i in range(len(output)-1, 0, -1):
@@ -197,7 +196,7 @@ class GlobalShellExecutor(object):
             self.v_cnt, escape_in, self.v_cnt, sh_cmd)
         return self.exec_global_shell(cmd, is_trip_output_end_blanklines)
 
-    # extrac shell shell, sql part from one line with format: @header '': SQL
+    # extract shell, sql part from one line with format: @header '': SQL
     # return row: (found the header or not?, the extracted shell, the SQL in the left part)
     def extract_sh_cmd(self, header, input_str):
         start = len(header)
@@ -239,7 +238,7 @@ class GlobalShellExecutor(object):
                     res_sql = input_str[i+1:]
                     break
         if not is_start or end == 0 or not is_trip_comma:
-            raise Exception("Invalid format: %v", input_str)
+            raise Exception("Invalid format: %s", input_str)
         #unescape \' to ' and \\ to '
         res_cmd = res_cmd.replace('\\\'', '\'')
         res_cmd = res_cmd.replace('\\\\', '\\')
@@ -311,7 +310,7 @@ class SQLIsolationExecutor(object):
                 print >>self.out_file, r.rstrip()
 
         def fork(self, command, blocking, global_sh_executor):
-            print >>self.out_file, "  <waiting ...>"
+            print >>self.out_file, " <waiting ...>"
             self.pipe.send((command, True))
 
             if blocking:
@@ -430,7 +429,7 @@ class SQLIsolationExecutor(object):
                     else:
                         raise
             return con
- 
+
         def get_hostname_port(self, contentid, role):
             """
                 Gets the port number/hostname combination of the
@@ -604,7 +603,7 @@ class SQLIsolationExecutor(object):
         global_sh_executor.exec_global_shell("GP_PORT=%s" % port, True)
         sqls = global_sh_executor.exec_global_shell_with_orig_str(sql, pre_run_cmd, True)
         if (len(sqls) != 1):
-            raise Exception("Invalid shell commmand: %v", sqls)
+            raise Exception("Invalid shell command: %s" % "\n".join(sqls))
 
         return sqls[0]
 
@@ -612,14 +611,13 @@ class SQLIsolationExecutor(object):
         (hostname, port) = ConnectionInfo.get_hostname_port(name, 'p')
         global_sh_executor.exec_global_shell("GP_HOSTNAME=%s" % hostname, True)
         global_sh_executor.exec_global_shell("GP_PORT=%s" % port, True)
-        out= global_sh_executor.exec_global_shell("get_retrieve_token", True)
+        out = global_sh_executor.exec_global_shell("get_retrieve_token", True)
         if (len(out) > 0):
             token = out[0]
         out = global_sh_executor.exec_global_shell("echo ${RETRIEVE_USER}", True)
         if (len(out) > 0):
             user = out[0]
         return (user, token)
-
 
     def process_command(self, command, output_file, global_sh_executor):
         """
@@ -945,7 +943,7 @@ class SQLIsolationTestCase:
         @pre_run can be used for executing shell command to change input (i.e. each SQL statement) or get input info;
         @post_run can be used for executing shell command to change ouput (i.e. the result set printed for each SQL execution)
         or get output info. Just use the env variable ${RAW_STR} to refer to the input/out stream before shell execution,
-        and the output of the shell commmand will be used as the SQL exeucted or output printed into results file.
+        and the output of the shell command will be used as the SQL exeucted or output printed into results file.
 
         1: @post_run ' TOKEN1=` echo "${RAW_STR}" | awk \'NR==3\' | awk \'{print $1}\'` && export MATCHSUBS="${MATCHSUBS}${NL}m/${TOKEN1}/${NL}s/${TOKEN1}/token_id1/${NL}" && echo "${RAW_STR}" ': SELECT token,hostname,status FROM GP_ENDPOINTS WHERE cursorname='c1';
         2R: @pre_run ' echo "${RAW_STR}" | sed "s#@TOKEN1#${TOKEN1}#" ': RETRIEVE ALL FROM "@TOKEN1";

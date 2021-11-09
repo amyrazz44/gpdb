@@ -185,7 +185,7 @@ ExecRetrieveStmt(const RetrieveStmt * stmt, DestReceiver *dest)
 
 	if (RetrieveCtl.entry == NULL)
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("endpoint %s is not attached.",
+						errmsg("endpoint %s is not attached",
 							   stmt->endpoint_name)));
 
 	retrieveCount = stmt->count;
@@ -317,7 +317,7 @@ start_retrieve(const char *endpointName)
 		endpoint = find_endpoint(endpointName, RetrieveCtl.sessionID);
 		if (!endpoint)
 			ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							errmsg("The endpoint %s does not exist in the session",
+							errmsg("the endpoint %s does not exist in the session",
 								   endpointName)));
 		validate_retrieve_endpoint(endpoint, endpointName);
 		endpoint->receiverPid = MyProcPid;
@@ -357,8 +357,8 @@ validate_retrieve_endpoint(Endpoint endpoint, const char *endpointName)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						errmsg("the PARALLEL RETRIEVE CURSOR was created by "
-							   "a different user."),
-						errhint("using the same user as the PARALLEL "
+							   "a different user"),
+						errhint("Using the same user as the PARALLEL "
 								"RETRIEVE CURSOR creator to retrieve.")));
 	}
 
@@ -422,7 +422,7 @@ attach_receiver_mq(RetrieveExecEntry * entry, dsm_handle dsmHandle)
 	dsmSeg = dsm_attach(dsmHandle);
 	if (dsmSeg == NULL)
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("attach to shared message queue failed.")));
+						errmsg("attach to shared message queue failed")));
 	entry->mqSeg = dsmSeg;
 
 	dsm_pin_mapping(dsmSeg);
@@ -524,7 +524,7 @@ receive_tuple_slot(RetrieveExecEntry * entry)
 		 * wait_receiver()
 		 */
 		elog(DEBUG3, "CDB_ENDPOINT: receiver notifies sender in "
-			 "receive_tuple_slot() when retrieving data for the first time.");
+			 "receive_tuple_slot() when retrieving data for the first time");
 		notify_sender(entry, false);
 	}
 

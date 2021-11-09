@@ -228,7 +228,7 @@ INSERT INTO t5 SELECT GENERATE_SERIES(1, 10);
 -1U: @pre_run 'set_endpoint_variable @ENDPOINT2': SELECT state FROM gp_segment_endpoints() WHERE endpointname='@ENDPOINT2';
 -1R: @pre_run 'set_endpoint_variable @ENDPOINT2': RETRIEVE ALL FROM ENDPOINT "@ENDPOINT2";
 
-1<: 
+1<:
 1: SELECT * FROM gp_wait_parallel_retrieve_cursor('c1', 0);
 1: SELECT state FROM gp_endpoints() WHERE cursorname='c1';
 1: ROLLBACK;

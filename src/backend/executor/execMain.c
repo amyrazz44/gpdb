@@ -1695,6 +1695,7 @@ ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
 		PreventCommandIfReadOnly(CreateCommandTag((Node *) plannedstmt));
 	}
 }
+
 static void
 adjust_root_slice_for_parallel_retrieve_cursor(Flow *flow, Slice *root_slice)
 {
@@ -2100,7 +2101,6 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			adjust_root_slice_for_parallel_retrieve_cursor(flow, root_slice);
 		}
 	}
-		
 
 	/*
 	 * Initialize private state information for each SubPlan.  We must do this

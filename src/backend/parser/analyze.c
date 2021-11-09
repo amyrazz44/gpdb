@@ -3214,6 +3214,7 @@ transformDeclareCursorStmt(ParseState *pstate, DeclareCursorStmt *stmt)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("SCROLL is not allowed for the PARALLEL RETRIEVE CURSORs"),
 				 errdetail("Scrollable cursors can not be parallel")));
+
 	/*
 	 * We also disallow data-modifying WITH in a cursor.  (This could be
 	 * allowed, but the semantics of when the updates occur might be

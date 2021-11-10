@@ -44,7 +44,7 @@ DECLARE
  READY 
 (1 row)
 *R: @pre_run 'set_endpoint_variable @ENDPOINT1': RETRIEVE ALL FROM ENDPOINT "@ENDPOINT1";
-#-1retrieve> FATAL:  Retrieve auth token is invalid
+#-1retrieve> FATAL:  retrieve auth token is invalid
 
  a  
 ----
@@ -341,7 +341,7 @@ DECLARE
 (0 rows)
 -- finished retrieving all endpoints and check state
 *R: @pre_run 'set_endpoint_variable @ENDPOINT2': RETRIEVE ALL FROM ENDPOINT "@ENDPOINT2";
-#-1retrieve> FATAL:  Retrieve auth token is invalid
+#-1retrieve> FATAL:  retrieve auth token is invalid
 
  a  
 ----
@@ -794,6 +794,10 @@ DECLARE
 (10 rows)
 -- 1R still bind to Test4 session, so can not retrieve from current endpoint.
 1R: @pre_run 'set_endpoint_variable @ENDPOINT5': RETRIEVE ALL FROM ENDPOINT "@ENDPOINT5";
+ERROR:  the endpoint c50000005100000005 does not exist in the session
+-- Since seg1 retrieve session is bind to Test4 session. And Test4 session get killed. We need to restart it.
+1Rq: ... <quitting>
+1R: @pre_run 'set_endpoint_variable @ENDPOINT5': RETRIEVE ALL FROM ENDPOINT "@ENDPOINT5";
  a  
 ----
  1  
@@ -834,10 +838,6 @@ DECLARE
  95 
  98 
 (37 rows)
--- Since seg1 retrieve session is bind to Test4 session. And Test4 session get killed. We need to restart it.
-1Rq: ... <quitting>
-1R: @pre_run 'set_endpoint_variable @ENDPOINT5': RETRIEVE ALL FROM ENDPOINT "@ENDPOINT5";
-ERROR:  another session (pid: PID) used the endpoint and completed retrieving
 -- get senderpid which is endpoint execution backend
 0U: @post_run 'get_tuple_cell PID51 1 1 ; create_sub "${PID51}[ \t]*" senderpid51': SELECT senderpid, receiverpid<>-1, state FROM gp_segment_endpoints();
  senderpid | ?column? | state

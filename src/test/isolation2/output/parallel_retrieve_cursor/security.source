@@ -17,7 +17,8 @@ CREATE
  1        
 (1 row)
 0R: SELECT 1;
-#0retrieve> FATAL:  Retrieve auth token is invalid
+#0retrieve> FATAL:  retrieve auth token is invalid
+0Rq: ... <quitting>
 
 -- Test: Declare a cursor
 1: BEGIN;
@@ -34,7 +35,7 @@ DECLARE
 0R: set gp_role to 'utility';
 ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 
--- Test: limit all statement which is supported in utility session
+-- Test: limit all statement which is supported in retrieve session
 0R: show gp_role;
 ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 
@@ -55,7 +56,6 @@ ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 0R: truncate table t1;
 ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
--- web external table is also disallowed by this restriction.
 0R: select * from t1;
 ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 
@@ -64,7 +64,7 @@ ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 0R: DROP TABLE t1;
 ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 
--- copy ... on program ... is also disallowed by this restriction.
+-- copy ... on program ... is also disallowed by this retrieve session.
 0R: COPY t1 to '/tmp/1.cvs';
 ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 
@@ -78,22 +78,22 @@ ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 0R: CREATE OR REPLACE FUNCTION myappend1(anyarray, anyelement) RETURNS anyarray AS $$ SELECT $1 || $2 $$ LANGUAGE SQL;
 ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 
--- Test: Different illegal tokens always lead to a same general message
----- Illegal tokens
+-- Test: Different illegal endpoints always lead to an error
+---- invalid endpoints
 1R: RETRIEVE ALL FROM ENDPOINT abc;
-ERROR:  The endpoint abc does not exist in the session
+ERROR:  the endpoint abc does not exist in the session
 1R: RETRIEVE ALL FROM ENDPOINT 123;
 ERROR:  syntax error at or near "123"
 LINE 1: RETRIEVE ALL FROM ENDPOINT 123;
                                    ^
 1R: RETRIEVE ALL FROM ENDPOINT tk1122;
-ERROR:  The endpoint tk1122 does not exist in the session
+ERROR:  the endpoint tk1122 does not exist in the session
 1R: RETRIEVE ALL FROM ENDPOINT tktt223344556677889900112233445566;
-ERROR:  The endpoint tktt223344556677889900112233445566 does not exist in the session
+ERROR:  the endpoint tktt223344556677889900112233445566 does not exist in the session
 
 -- Retrieve data.
 *R: @pre_run 'set_endpoint_variable @ENDPOINT1': RETRIEVE 10 FROM ENDPOINT "@ENDPOINT1";
-#-1retrieve> FATAL:  Retrieve auth token is invalid
+#-1retrieve> FATAL:  retrieve auth token is invalid
 
  a  
 ----

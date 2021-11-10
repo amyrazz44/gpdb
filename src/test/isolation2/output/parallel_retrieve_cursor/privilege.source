@@ -189,17 +189,14 @@ DECLARE
 --- Login as uu1 and retrieve, only u1 can retrieve
 3R: SELECT SESSION_USER, CURRENT_USER;
 #3retrieve> FATAL:  Authentication failure (Wrong password or no endpoint for the user)
-
 3R: @pre_run 'set_endpoint_variable @ENDPOINT3': RETRIEVE ALL FROM ENDPOINT "@ENDPOINT3";
 #3retrieve> FATAL:  Authentication failure (Wrong password or no endpoint for the user)
-
 
 --- Retrieve c2(which belongs to u1) but current user is uu1.
 3R: @pre_run 'set_endpoint_variable @ENDPOINT2': RETRIEVE ALL FROM ENDPOINT "@ENDPOINT2";
 #3retrieve> FATAL:  Authentication failure (Wrong password or no endpoint for the user)
-
 0Rq: ... <quitting>
-3Rq:FAILED:  Sessions not started cannot be quit
+3Rq: ... <quitting>
 1<:  <... completed>
 FAILED:  Execution failed
 1: END;
@@ -252,8 +249,7 @@ DECLARE
  1        
 (1 row)
 *R: SET SESSION AUTHORIZATION adminuser;
-#-1retrieve> FATAL:  Retrieve auth token is invalid
-
+#-1retrieve> FATAL:  retrieve auth token is invalid
 
 ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 
@@ -261,8 +257,7 @@ ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 
 ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 *R: SELECT SESSION_USER, CURRENT_USER;
-#-1retrieve> FATAL:  Retrieve auth token is invalid
-
+#-1retrieve> FATAL:  retrieve auth token is invalid
 
 ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 
@@ -270,17 +265,16 @@ ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 
 ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 *R: @pre_run 'set_endpoint_variable @ENDPOINT4': RETRIEVE ALL FROM ENDPOINT "@ENDPOINT4";
-#-1retrieve> FATAL:  Retrieve auth token is invalid
+#-1retrieve> FATAL:  retrieve auth token is invalid
 
+ERROR:  the PARALLEL RETRIEVE CURSOR was created by a different user
+HINT:  Using the same user as the PARALLEL RETRIEVE CURSOR creator to retrieve.
 
-ERROR:  the PARALLEL RETRIEVE CURSOR was created by a different user.
-HINT:  using the same user as the PARALLEL RETRIEVE CURSOR creator to retrieve.
+ERROR:  the PARALLEL RETRIEVE CURSOR was created by a different user
+HINT:  Using the same user as the PARALLEL RETRIEVE CURSOR creator to retrieve.
 
-ERROR:  the PARALLEL RETRIEVE CURSOR was created by a different user.
-HINT:  using the same user as the PARALLEL RETRIEVE CURSOR creator to retrieve.
-
-ERROR:  the PARALLEL RETRIEVE CURSOR was created by a different user.
-HINT:  using the same user as the PARALLEL RETRIEVE CURSOR creator to retrieve.
+ERROR:  the PARALLEL RETRIEVE CURSOR was created by a different user
+HINT:  Using the same user as the PARALLEL RETRIEVE CURSOR creator to retrieve.
 -- cancel the no privilege retrieving endpoints, otherwise it will wait until statement_timeout
 42: select pg_cancel_backend(pid) from pg_stat_activity where query like 'SELECT * FROM gp_wait_parallel_retrieve_cursor(''c1'', -1);';
  pg_cancel_backend 
@@ -362,8 +356,7 @@ SET
 
 --- u2 is not able to see u1's endpoints in RETRIEVE mode
 *R: @pre_run 'export CURRENT_ENDPOINT_POSTFIX=50 ; export RETRIEVE_USER="adminuser" ; echo $RAW_STR' : SET SESSION AUTHORIZATION u2;
-#-1retrieve> FATAL:  Retrieve auth token is invalid
-
+#-1retrieve> FATAL:  retrieve auth token is invalid
 
 ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 
@@ -395,17 +388,16 @@ ERROR:  This is a retrieve connection, but the query is not a RETRIEVE.
 
 --- u2 is not able to retrieve from u1's endpoints in RETRIEVE mode
 *R: @pre_run 'set_endpoint_variable @ENDPOINT5': RETRIEVE ALL FROM ENDPOINT "@ENDPOINT5";
-#-1retrieve> FATAL:  Retrieve auth token is invalid
+#-1retrieve> FATAL:  retrieve auth token is invalid
 
+ERROR:  the PARALLEL RETRIEVE CURSOR was created by a different user
+HINT:  Using the same user as the PARALLEL RETRIEVE CURSOR creator to retrieve.
 
-ERROR:  the PARALLEL RETRIEVE CURSOR was created by a different user.
-HINT:  using the same user as the PARALLEL RETRIEVE CURSOR creator to retrieve.
+ERROR:  the PARALLEL RETRIEVE CURSOR was created by a different user
+HINT:  Using the same user as the PARALLEL RETRIEVE CURSOR creator to retrieve.
 
-ERROR:  the PARALLEL RETRIEVE CURSOR was created by a different user.
-HINT:  using the same user as the PARALLEL RETRIEVE CURSOR creator to retrieve.
-
-ERROR:  the PARALLEL RETRIEVE CURSOR was created by a different user.
-HINT:  using the same user as the PARALLEL RETRIEVE CURSOR creator to retrieve.
+ERROR:  the PARALLEL RETRIEVE CURSOR was created by a different user
+HINT:  Using the same user as the PARALLEL RETRIEVE CURSOR creator to retrieve.
 -- cancel the no privilege retrieving endpoints, otherwise it will wait until statement_timeout
 42: select pg_cancel_backend(pid) from pg_stat_activity where query like 'SELECT * FROM gp_wait_parallel_retrieve_cursor(''c4'', -1);';
  pg_cancel_backend 

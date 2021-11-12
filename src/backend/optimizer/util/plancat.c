@@ -412,10 +412,15 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 
 	/* Grab the fdwroutine info using the relcache, while we have it */
 	if (relation->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
+	{
 		rel->fdwroutine = GetFdwRoutineForRelation(relation, true);
+		rel->ftEntry->exec_location = GetForeignTable(RelationGetRelid(relation))->exec_location;
+		rel->ftEntry->segment_number = GetForeignTable(RelationGetRelid(relation))->segment_number;
+	}
 	else
+	{
 		rel->fdwroutine = NULL;
-
+	}
 	heap_close(relation, NoLock);
 
 	/*

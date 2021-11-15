@@ -115,7 +115,7 @@ ROLLBACK
 -1Rq: ... <quitting>
 1Rq: ... <quitting>
 2Rq: ... <quitting>
-3Rq: FAILED:  Sessions not started cannot be quit
+3Rq: Sessions not started cannot be quit
 
 --------- Test3: Basic test for PARALLEL RETRIEVE CURSOR on replicated table
 1: BEGIN;
@@ -206,7 +206,7 @@ ROLLBACK
 -1Rq: ... <quitting>
 1Rq: ... <quitting>
 2Rq: ... <quitting>
-3Rq: FAILED:  Sessions not started cannot be quit
+3Rq: Sessions not started cannot be quit
 
 --------- Test4: Basic test for PARALLEL RETRIEVE CURSOR on replicated table
 1: BEGIN;

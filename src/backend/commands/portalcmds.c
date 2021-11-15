@@ -222,13 +222,13 @@ PerformPortalFetch(FetchStmt *stmt,
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("The 'MOVE' statement for PARALLEL RETRIEVE CURSOR is not supported.")));
+					 errmsg("the 'MOVE' statement for PARALLEL RETRIEVE CURSOR is not supported")));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("Cannot specify 'FETCH' for PARALLEL RETRIEVE CURSOR."),
+					 errmsg("cannot specify 'FETCH' for PARALLEL RETRIEVE CURSOR"),
 					 errhint("Using 'RETRIEVE' statement on endpoint instead.")));
 		}
 	}

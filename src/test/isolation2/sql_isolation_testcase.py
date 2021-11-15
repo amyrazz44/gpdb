@@ -773,7 +773,18 @@ class SQLIsolationExecutor(object):
         elif flag == "Rq":
             if len(sql) > 0:
                 raise Exception("No query should be given on quit")
-            self.quit_process(output_file, process_name, con_mode, dbname=dbname)
+
+            if process_name == '*':
+                process_names = [str(content) for content in self.get_all_primary_contentids(dbname)]
+            else:
+                process_names = [process_name]
+
+            for name in process_names:
+                try:
+                    self.quit_process(output_file, name, con_mode, dbname=dbname)
+                except Exception as e:
+                    print >> output_file, str(e)
+                    pass
         elif flag == "M":
             self.get_process(output_file, process_name, con_mode, dbname=dbname).query(sql.strip(), post_run_cmd, global_sh_executor)
         else:
@@ -798,7 +809,7 @@ class SQLIsolationExecutor(object):
                     command_part = line
                 if command_part == "" or command_part == "\n":
                     print >>output_file 
-                elif command_part.endswith(";\n") or re.match(r"^\d+[q\\<]:$", line) or re.match(r"^-?\d+[SUR][q\\<]:$", line):
+                elif command_part.endswith(";\n") or re.match(r"^\d+[q\\<]:$", line) or re.match(r"^\*Rq:$", line) or re.match(r"^-?\d+[SUR][q\\<]:$", line):
                     command += command_part
                     try:
                         self.process_command(command, output_file, shell_executor)

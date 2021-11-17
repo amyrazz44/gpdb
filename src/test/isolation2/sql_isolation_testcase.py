@@ -289,7 +289,7 @@ class SQLIsolationExecutor(object):
                 self.mode, pipe, self.dbname, user=self.user, passwd=self.passwd)
             sp.do()
 
-        def query(self, command, post_run_cmd, global_sh_executor):
+        def query(self, command, post_run_cmd = None, global_sh_executor = None):
             print >>self.out_file
             self.out_file.flush()
             if len(command.strip()) == 0:

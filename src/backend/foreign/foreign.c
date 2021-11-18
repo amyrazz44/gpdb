@@ -18,6 +18,7 @@
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_foreign_table.h"
 #include "catalog/pg_user_mapping.h"
+#include "cdb/cdbutil.h"
 #include "commands/defrem.h"
 #include "foreign/fdwapi.h"
 #include "foreign/foreign.h"
@@ -70,6 +71,41 @@ SeparateOutMppExecute(List **options)
 	}
 
 	return exec_location;
+}
+
+/* Get and separate out the segment_number option */
+int32
+SeparateOutSegmentNumber(List **options)
+{
+	ListCell *lc = NULL;
+	ListCell *prev = NULL;
+	char *segment_number_str = NULL;
+	int32 segment_number = 0;
+
+	foreach(lc, *options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "segment_number") == 0)
+		{
+			segment_number_str = defGetString(def);
+			segment_number = pg_atoi(segment_number_str, sizeof(int32), 0);
+
+			if (segment_number <= 0)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("\"%d\" is not a valid segment_number value",
+								segment_number)));
+			}
+
+			*options = list_delete_cell(*options, lc, prev);
+			break;
+		}
+
+		prev = lc;
+	}
+	return segment_number;
 }
 
 /*
@@ -190,6 +226,10 @@ GetForeignServer(Oid serverid)
 		server->exec_location = fdw->exec_location;
 	}
 
+	server->segment_number = SeparateOutSegmentNumber(&server->options);
+	if (server->segment_number <= 0)
+		server->segment_number = getgpsegmentCount();
+
 	ReleaseSysCache(tp);
 
 	return server;
@@ -294,12 +334,15 @@ GetForeignTable(Oid relid)
 	else
 		ft->options = untransformRelOptions(datum);
 
+	ForeignServer *server = GetForeignServer(ft->serverid);
 	ft->exec_location = SeparateOutMppExecute(&ft->options);
 	if (ft->exec_location == FTEXECLOCATION_NOT_DEFINED)
-	{
-		ForeignServer *server = GetForeignServer(ft->serverid);
 		ft->exec_location = server->exec_location;
-	}
+
+	ft->segment_number = SeparateOutSegmentNumber(&ft->options);
+	if (ft->segment_number <= 0)
+		ft->segment_number = server->segment_number;
+
 
 	ReleaseSysCache(tp);
 

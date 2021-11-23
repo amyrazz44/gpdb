@@ -14,7 +14,7 @@ SHLIB_LINK_INTERNAL = -Wl,--exclude-libs=libpq.a -Wl,-Bstatic $(libpq) -Wl,-Bdyn
 EXTENSION = postgres_fdw
 DATA = postgres_fdw--1.0.sql
 
-REGRESS =
+REGRESS = postgres_fdw gp_postgres_fdw gp2gp
 ifeq ($(TEST_PGFDW),1)
 REGRESS += gp2pg_postgres_fdw
 endif

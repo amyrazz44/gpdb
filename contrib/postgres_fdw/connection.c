@@ -113,7 +113,7 @@ PGconn *
 GetConnection(ForeignServer *server, UserMapping *user,
 			  bool will_prep_stmt)
 {
-	return GetCustomConnection(server, user, will_prep_stmt, false, 0, NULL, -1);
+	return GetCustomConnection(server, user, will_prep_stmt, false, -1, NULL, -1);
 }
 
 /*

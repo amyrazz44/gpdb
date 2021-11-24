@@ -28,6 +28,7 @@ CREATE USER MAPPING FOR CURRENT_USER SERVER loopback;
 -- ===================================================================
 -- create objects used through FDW loopback server
 -- ===================================================================
+DROP TYPE IF EXISTS user_enum;
 CREATE TYPE user_enum AS ENUM ('foo', 'bar', 'buz');
 CREATE SCHEMA "S 1";
 CREATE TABLE "S 1"."T 1" (
@@ -729,3 +730,8 @@ UPDATE rem1 SET f2 = 'testo';
 
 -- Test returning a system attribute
 INSERT INTO rem1(f2) VALUES ('test') RETURNING ctid;
+
+-- Clean up
+DROP FUNCTION trig_row_before_insupdate() CASCADE;
+DROP FUNCTION trig_null() CASCADE;
+DROP FUNCTION trigger_func() CASCADE;

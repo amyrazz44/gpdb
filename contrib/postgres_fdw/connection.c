@@ -46,6 +46,7 @@ typedef struct ConnCacheKey
 {
 	Oid			serverid;		/* OID of foreign server */
 	Oid			userid;			/* OID of local user whose mapping we use */
+	int			dbid;           /* the database ID of the foreign Greenplum cluster */
 } ConnCacheKey;
 
 typedef struct ConnCacheEntry
@@ -61,6 +62,8 @@ typedef struct ConnCacheEntry
 	bool		invalidated;	/* true if reconnect is pending */
 	uint32		server_hashvalue;	/* hash value of foreign server OID */
 	uint32		mapping_hashvalue;	/* hash value of user mapping OID */
+	int			server_gp_session_id;	/* gp_sesson_id on the server, for
+										 * retrieve only */
 } ConnCacheEntry;
 
 /*
@@ -76,7 +79,7 @@ static unsigned int prep_stmt_number = 0;
 static bool xact_got_connection = false;
 
 /* prototypes of private functions */
-static PGconn *connect_pg_server(ForeignServer *server, UserMapping *user);
+static PGconn *connect_pg_server(ForeignServer *server, UserMapping *user, bool is_gp_retrieve);
 static void disconnect_pg_server(ConnCacheEntry *entry);
 static void check_conn_params(const char **keywords, const char **values);
 static void configure_remote_session(PGconn *conn);
@@ -110,9 +113,36 @@ PGconn *
 GetConnection(ForeignServer *server, UserMapping *user,
 			  bool will_prep_stmt)
 {
+	return GetCustomConnection(server, user, will_prep_stmt, false, -1, NULL, -1);
+}
+
+/*
+ * Same as GetConnection(), except if it's for gp retrieve connection, dbid &
+ * server_options & server_gp_session_id are used, else they mean nothing.
+ */
+PGconn *
+GetCustomConnection(ForeignServer *server, UserMapping *user, bool will_prep_stmt, bool is_gp_retrieve, int dbid, List *server_options, int server_gp_session_id)
+{
 	bool		found;
 	ConnCacheEntry *entry;
 	ConnCacheKey key;
+
+	/*
+	 * server_options means nothing for non-retrieve connection.  Clean up
+	 * server_options for the case to avoid potential issues.  non-retrieve
+	 * connection should be on the remote coordinator only so hardcode it as -1
+	 * (an invalid dbid) for the cases to avoid collision with retrieve
+	 * connections. server_gp_session_id is used during retrieve: For retrieve
+	 * connection reusing, there is an additional requirement - the endpoint
+	 * should have the same remote gp_session_id so we need to store the
+	 * gp_session_id in the hash entry.
+	 */
+	if (!is_gp_retrieve)
+	{
+		dbid = -1;
+		server_options = NULL;
+		server_gp_session_id = -1;
+	}
 
 	/* First time through, initialize connection cache hashtable */
 	if (ConnectionHash == NULL)
@@ -145,8 +175,9 @@ GetConnection(ForeignServer *server, UserMapping *user,
 	xact_got_connection = true;
 
 	/* Create hash key for the entry.  Assume no pad bytes in key struct */
-	key.serverid = server->serverid;
+	key.serverid = user->serverid;
 	key.userid = user->userid;
+	key.dbid = dbid;
 
 	/*
 	 * Find or create cached entry for requested connection.
@@ -176,6 +207,17 @@ GetConnection(ForeignServer *server, UserMapping *user,
 	}
 
 	/*
+	 * For retrieve, the connection could not be reused if the remote session
+	 * id is different.
+	 */
+	if (entry->conn != NULL && is_gp_retrieve && entry->server_gp_session_id != server_gp_session_id)
+	{
+		elog(DEBUG3, "closing connection %p for option changes to take effect",
+			 entry->conn);
+		disconnect_pg_server(entry);
+	}
+
+	/*
 	 * We don't check the health of cached connection here, because it would
 	 * require some overhead.  Broken connection will be detected when the
 	 * connection is actually used.
@@ -188,6 +230,44 @@ GetConnection(ForeignServer *server, UserMapping *user,
 	 */
 	if (entry->conn == NULL)
 	{
+		ListCell   *cell_server, *cell_endpoint;
+		List* extra_options = NIL;
+
+		/*
+		 * If server_options is not null, we are creating connection for endpoint
+		 * on QE. In this case server_options contains general endpoint options
+		 * like user, host, port, etc. We want to inherit other options from
+		 * foreign server options in catalog, but override these general options.
+		 */
+		if (server_options != NULL)
+		{
+			foreach(cell_endpoint, server_options)
+			{
+				DefElem    *def_endpoint = (DefElem *) lfirst(cell_endpoint);
+				bool found = false;
+				foreach(cell_server, server->options)
+				{
+					DefElem    *def_server = (DefElem *) lfirst(cell_server);
+
+					if (strcmp(def_endpoint->defname, def_server->defname) == 0)
+					{
+						/* Override foreign server option with endpoint option */
+						def_server->arg = def_endpoint->arg;
+						found = true;
+						break;
+					}
+				}
+				if (!found)
+				{
+					/* Endpoint option not found in foreign server option, so we
+					 * need to add it to the list.
+					 */
+					extra_options = lappend(extra_options, def_endpoint);
+				}
+			}
+			server->options = list_concat(server->options, extra_options);
+		}
+
 		Oid			umoid;
 
 		/* Reset all transient state fields, to be sure all are clean */
@@ -214,15 +294,17 @@ GetConnection(ForeignServer *server, UserMapping *user,
 			GetSysCacheHashValue1(USERMAPPINGOID, ObjectIdGetDatum(umoid));
 
 		/* Now try to make the connection */
-		entry->conn = connect_pg_server(server, user);
+		entry->conn = connect_pg_server(server, user, is_gp_retrieve);
 		elog(DEBUG3, "new postgres_fdw connection %p for server \"%s\"",
 			 entry->conn, server->servername);
+		entry->server_gp_session_id = server_gp_session_id;
 	}
 
 	/*
 	 * Start a new transaction or subtransaction if needed.
 	 */
-	begin_remote_xact(entry);
+	if (!is_gp_retrieve)
+		begin_remote_xact(entry);
 
 	/* Remember if caller will prepare statements */
 	entry->have_prep_stmt |= will_prep_stmt;
@@ -234,7 +316,7 @@ GetConnection(ForeignServer *server, UserMapping *user,
  * Connect to remote server using specified server and user mapping properties.
  */
 static PGconn *
-connect_pg_server(ForeignServer *server, UserMapping *user)
+connect_pg_server(ForeignServer *server, UserMapping *user, bool is_gp_retrieve)
 {
 	PGconn	   *volatile conn = NULL;
 
@@ -309,7 +391,8 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 				   errhint("Target server's authentication method must be changed.")));
 
 		/* Prepare new session for use */
-		configure_remote_session(conn);
+		if (!is_gp_retrieve)
+			configure_remote_session(conn);
 
 		pfree(keywords);
 		pfree(values);
@@ -670,10 +753,6 @@ pgfdw_report_error(int elevel, PGresult *res, PGconn *conn,
 
 /*
  * pgfdw_xact_callback --- cleanup at main-transaction end.
- *
- * This runs just late enough that it must not enter user-defined code
- * locally.  (Entering such code on the remote side is fine.  Its remote
- * COMMIT TRANSACTION may run deferred triggers.)
  */
 static void
 pgfdw_xact_callback(XactEvent event, void *arg)

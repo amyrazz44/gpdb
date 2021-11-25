@@ -1,12 +1,25 @@
 -- ===================================================================
 -- create FDW objects
 -- ===================================================================
+-- start_ignore
+DROP EXTENSION IF EXISTS postgres_fdw CASCADE;
+DROP FUNCTION IF EXISTS postgres_fdw_abs(int) CASCADE;
+DROP OPERATOR IF EXISTS ===(int, int) CASCADE;
+select current_database() as cur_db; \gset
+-- end_ignore
 
 CREATE EXTENSION postgres_fdw;
+set optimizer = off;
 
 CREATE SERVER testserver1 FOREIGN DATA WRAPPER postgres_fdw;
-CREATE SERVER loopback FOREIGN DATA WRAPPER postgres_fdw
-  OPTIONS (dbname 'contrib_regression');
+DO $d$
+    BEGIN
+        EXECUTE $$CREATE SERVER loopback FOREIGN DATA WRAPPER postgres_fdw
+            OPTIONS (dbname '$$||current_database()||$$',
+                     port '$$||current_setting('port')||$$'
+            )$$;
+    END;
+$d$;
 
 CREATE USER MAPPING FOR public SERVER testserver1
 	OPTIONS (user 'value', password 'value');
@@ -15,6 +28,7 @@ CREATE USER MAPPING FOR CURRENT_USER SERVER loopback;
 -- ===================================================================
 -- create objects used through FDW loopback server
 -- ===================================================================
+DROP TYPE IF EXISTS user_enum;
 CREATE TYPE user_enum AS ENUM ('foo', 'bar', 'buz');
 CREATE SCHEMA "S 1";
 CREATE TABLE "S 1"."T 1" (
@@ -296,7 +310,7 @@ EXPLAIN (VERBOSE, COSTS false) EXECUTE st5('foo', 1);
 EXECUTE st5('foo', 1);
 
 -- altering FDW options requires replanning
-PREPARE st6 AS SELECT * FROM ft1 t1 WHERE t1.c1 = t1.c2;
+PREPARE st6 AS SELECT * FROM ft1 t1 WHERE t1.c1 = t1.c2 ORDER BY t1.c1;
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st6;
 PREPARE st7 AS INSERT INTO ft1 (c1,c2,c3) VALUES (1001,101,'foo');
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
@@ -319,17 +333,19 @@ DEALLOCATE st7;
 
 -- System columns, except ctid, should not be sent to remote
 EXPLAIN (VERBOSE, COSTS false)
-SELECT * FROM ft1 t1 WHERE t1.tableoid = 'pg_class'::regclass LIMIT 1;
-SELECT * FROM ft1 t1 WHERE t1.tableoid = 'ft1'::regclass LIMIT 1;
+SELECT * FROM ft1 t1 WHERE t1.tableoid = 'pg_class'::regclass ORDER BY t1.c1 LIMIT 1;
+SELECT * FROM ft1 t1 WHERE t1.tableoid = 'ft1'::regclass ORDER BY t1.c1 LIMIT 1;
 EXPLAIN (VERBOSE, COSTS false)
-SELECT tableoid::regclass, * FROM ft1 t1 LIMIT 1;
-SELECT tableoid::regclass, * FROM ft1 t1 LIMIT 1;
+SELECT tableoid::regclass, * FROM ft1 t1 ORDER BY t1.c1 LIMIT 1;
+SELECT tableoid::regclass, * FROM ft1 t1 ORDER BY t1.c1 LIMIT 1;
 EXPLAIN (VERBOSE, COSTS false)
-SELECT * FROM ft1 t1 WHERE t1.ctid = '(0,2)';
-SELECT * FROM ft1 t1 WHERE t1.ctid = '(0,2)';
+SELECT * FROM ft1 t1 WHERE t1.ctid = '(0,2)' ORDER BY t1.c1;
+SELECT * FROM ft1 t1 WHERE t1.ctid = '(0,2)' ORDER BY t1.c1;
 EXPLAIN (VERBOSE, COSTS false)
 SELECT ctid, * FROM ft1 t1 LIMIT 1;
-SELECT ctid, * FROM ft1 t1 LIMIT 1;
+EXPLAIN (VERBOSE, COSTS false)
+SELECT ctid, * FROM ft1 t1 ORDER BY t1.c1 LIMIT 1;
+SELECT ctid, * FROM ft1 t1 ORDER BY t1.c1 LIMIT 1;
 
 -- ===================================================================
 -- used in pl/pgsql function
@@ -415,7 +431,8 @@ DELETE FROM ft2 WHERE c1 % 10 = 5 RETURNING c1, c4;
 EXPLAIN (verbose, costs off)
 DELETE FROM ft2 USING ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 2;
 DELETE FROM ft2 USING ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 2;
-SELECT c1,c2,c3,c4 FROM ft2 ORDER BY c1;
+-- FIXME: gpdb does not support UPDATE/DELETE
+-- SELECT c1,c2,c3,c4 FROM ft2 ORDER BY c1;
 EXPLAIN (verbose, costs off)
 INSERT INTO ft2 (c1,c2,c3) VALUES (9999,999,'foo') RETURNING tableoid::regclass;
 INSERT INTO ft2 (c1,c2,c3) VALUES (9999,999,'foo') RETURNING tableoid::regclass;
@@ -448,6 +465,8 @@ INSERT INTO ft1(c1, c2) VALUES(1111, -2);  -- c2positive
 UPDATE ft1 SET c2 = -c2 WHERE c1 = 1;  -- c2positive
 
 -- Test savepoint/rollback behavior
+-- FIXME: Need update support to check this behavior
+/*
 select c2, count(*) from ft2 where c2 < 500 group by 1 order by 1;
 select c2, count(*) from "S 1"."T 1" where c2 < 500 group by 1 order by 1;
 begin;
@@ -476,7 +495,7 @@ select c2, count(*) from "S 1"."T 1" where c2 < 500 group by 1 order by 1;
 commit;
 select c2, count(*) from ft2 where c2 < 500 group by 1 order by 1;
 select c2, count(*) from "S 1"."T 1" where c2 < 500 group by 1 order by 1;
-
+*/
 -- ===================================================================
 -- test serial columns (ie, sequence-based defaults)
 -- ===================================================================
@@ -488,8 +507,8 @@ insert into loc1(f2) values('hi');
 insert into rem1(f2) values('hi remote');
 insert into loc1(f2) values('bye');
 insert into rem1(f2) values('bye remote');
-select * from loc1;
-select * from rem1;
+select * from loc1 order by f1;
+select * from rem1 order by f1;
 
 -- ===================================================================
 -- test local triggers
@@ -630,18 +649,18 @@ FOR EACH ROW EXECUTE PROCEDURE trig_row_before_insupdate();
 
 -- The new values should have 'triggered' appended
 INSERT INTO rem1 values(1, 'insert');
-SELECT * from loc1;
+SELECT * from loc1 order by f1;
 INSERT INTO rem1 values(2, 'insert') RETURNING f2;
-SELECT * from loc1;
+SELECT * from loc1 order by f1;
 UPDATE rem1 set f2 = '';
-SELECT * from loc1;
+SELECT * from loc1 order by f1;
 UPDATE rem1 set f2 = 'skidoo' RETURNING f2;
-SELECT * from loc1;
+SELECT * from loc1 order by f1;
 
 EXPLAIN (verbose, costs off)
 UPDATE rem1 set f1 = 10;          -- all columns should be transmitted
 UPDATE rem1 set f1 = 10;
-SELECT * from loc1;
+SELECT * from loc1 order by f1;
 
 DELETE FROM rem1;
 
@@ -652,13 +671,13 @@ BEFORE INSERT OR UPDATE ON rem1
 FOR EACH ROW EXECUTE PROCEDURE trig_row_before_insupdate();
 
 INSERT INTO rem1 values(1, 'insert');
-SELECT * from loc1;
+SELECT * from loc1 order by f1;
 INSERT INTO rem1 values(2, 'insert') RETURNING f2;
-SELECT * from loc1;
+SELECT * from loc1 order by f1;
 UPDATE rem1 set f2 = '';
-SELECT * from loc1;
+SELECT * from loc1 order by f1;
 UPDATE rem1 set f2 = 'skidoo' RETURNING f2;
-SELECT * from loc1;
+SELECT * from loc1 order by f1;
 
 DROP TRIGGER trig_row_before_insupd ON rem1;
 DROP TRIGGER trig_row_before_insupd2 ON rem1;
@@ -681,15 +700,15 @@ FOR EACH ROW EXECUTE PROCEDURE trig_null();
 -- Nothing should have changed.
 INSERT INTO rem1 VALUES (2, 'test2');
 
-SELECT * from loc1;
+SELECT * from loc1 order by f1;
 
 UPDATE rem1 SET f2 = 'test2';
 
-SELECT * from loc1;
+SELECT * from loc1 order by f1;
 
 DELETE from rem1;
 
-SELECT * from loc1;
+SELECT * from loc1 order by f1;
 
 DROP TRIGGER trig_null ON rem1;
 DELETE from rem1;
@@ -711,3 +730,8 @@ UPDATE rem1 SET f2 = 'testo';
 
 -- Test returning a system attribute
 INSERT INTO rem1(f2) VALUES ('test') RETURNING ctid;
+
+-- Clean up
+DROP FUNCTION trig_row_before_insupdate() CASCADE;
+DROP FUNCTION trig_null() CASCADE;
+DROP FUNCTION trigger_func() CASCADE;

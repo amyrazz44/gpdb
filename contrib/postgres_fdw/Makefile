@@ -18,6 +18,7 @@ REGRESS =
 ifeq ($(TEST_PGFDW),1)
 REGRESS += gp2pg_postgres_fdw
 endif
+REGRESS += postgres_fdw gp_postgres_fdw
 REGRESS_OPTS = --load-extension=$(EXTENSION)
 
 

@@ -3,13 +3,33 @@
 -- ===================================================================
 
 -- ===================================================================
--- Create source tables and populate with data
+-- create FDW objects
 -- ===================================================================
+-- start_ignore
+DROP EXTENSION IF EXISTS postgres_fdw CASCADE;
+DROP FUNCTION IF EXISTS postgres_fdw_abs(int) CASCADE;
+DROP OPERATOR IF EXISTS ===(int, int) CASCADE;
+select current_database() as cur_db; \gset
+-- end_ignore
 
-CREATE SERVER loopback FOREIGN DATA WRAPPER postgres_fdw
-  OPTIONS (dbname 'contrib_regression');
+SET optimizer=off;
+
+CREATE EXTENSION postgres_fdw;
+
+DO $d$
+    BEGIN
+        EXECUTE $$CREATE SERVER loopback FOREIGN DATA WRAPPER postgres_fdw
+            OPTIONS (dbname '$$||current_database()||$$',
+                     port '$$||current_setting('port')||$$',
+                     mpp_execute 'all segments'
+            )$$;
+    END;
+$d$;
 CREATE USER MAPPING FOR CURRENT_USER SERVER loopback;
 
+-- ===================================================================
+-- create objects used through FDW loopback server
+-- ===================================================================
 CREATE TABLE table_dist_rand
 (
 	f1 int,
@@ -67,7 +87,7 @@ INSERT INTO table_dist_int_text SELECT * FROM table_dist_rand;
 -- ===================================================================
 -- create target table
 -- ===================================================================
-CREATE SCHEMA "S 1";
+CREATE SCHEMA IF NOT EXISTS "S 1";
 CREATE TABLE "S 1"."GP 1" (
 	f1 int,
 	f2 text,

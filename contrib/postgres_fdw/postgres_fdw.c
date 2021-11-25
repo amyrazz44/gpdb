@@ -36,7 +36,9 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-
+#include "cdb/cdbvars.h"
+#include "cdb/cdbgang.h"
+#include "executor/execdesc.h"
 
 PG_MODULE_MAGIC;
 
@@ -98,7 +100,28 @@ enum FdwScanPrivateIndex
 	/* SQL statement to execute remotely (as a String node) */
 	FdwScanPrivateSelectSql,
 	/* Integer list of attribute numbers retrieved by the SELECT */
-	FdwScanPrivateRetrievedAttrs
+	FdwScanPrivateRetrievedAttrs,
+
+	/*
+	 * String describing join i.e. names of relations being joined and types
+	 * of join, added when the scan is join
+	 */
+	FdwScanPrivateRelations,
+	/*
+	 * Greenplum specific, for parallel retrieve cursor. Do not modify the
+	 * orders since they need to match get_endpoints_info(), etc.
+	 *
+	 * NOTE: Put them at the end. At least at this moment upstream uses the
+	 * below code for EXPLAIN output (used on the coordinator) and the below
+	 * gpdb specific entries are populated in QE nodes.
+	 *
+	 * postgresExplainForeignScan()
+	 *    if (list_length(fdw_private) > FdwScanPrivateRelations)
+	 */
+	FdwScanPrivateEndpoints,
+	FdwScanPrivateUserName,
+	FdwScanPrivateEndpointName,
+	FdwScanPrivateEndpointSessionId,
 };
 
 /*
@@ -156,6 +179,12 @@ typedef struct PgFdwScanState
 	/* working memory contexts */
 	MemoryContext batch_cxt;	/* context holding current batch of tuples */
 	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
+
+	/* gpdb: parallel retrieve cursor relevant */
+	bool		is_gp_retrieve;
+	bool		is_gp_parallel_retrieve_cursor;
+	List		*endpoints;
+	char		*endpoint_name;
 } PgFdwScanState;
 
 /*
@@ -286,7 +315,6 @@ static void postgresExplainForeignModify(ModifyTableState *mtstate,
 static bool postgresAnalyzeForeignTable(Relation relation,
 							AcquireSampleRowsFunc *func,
 							BlockNumber *totalpages);
-static int greenplumCheckIsGreenplum(ForeignServer *server, UserMapping *user);
 
 /*
  * Helper functions
@@ -328,6 +356,11 @@ static HeapTuple make_tuple_from_result_row(PGresult *res,
 						   MemoryContext temp_context);
 static void conversion_error_callback(void *arg);
 
+static bool is_remote_gp_cluster(ForeignServer* server, UserMapping *user);
+static int get_remote_segment_number(ForeignServer* server, UserMapping *user);
+static void get_endpoints_info(PGconn *conn, int cursor_number, int session_id, List **endpoints);
+static void create_parallel_retrieve_cursor(ForeignScanState *node);
+static void set_optimizer_off(ForeignServer* server, UserMapping *user);
 
 /*
  * Foreign-data wrapper handler function: return a struct with pointers
@@ -489,6 +522,16 @@ postgresGetForeignRelSize(PlannerInfo *root,
 	if (fpinfo->use_remote_estimate)
 	{
 		/*
+		* Greenplum specific.
+		* Disable ORCA first, because we can only use planner for foreign table
+		* queries, we must use the same planner when doing remote estimate to
+		* ensure cost model is consistent. During real query execution ORCA might
+		* be used depending on remote cluster setting.
+		* Actually, we should reset optimizer at the end of this query due to the
+		* connection may be reused.
+		*/
+		set_optimizer_off(fpinfo->server, fpinfo->user);
+		/*
 		 * Get cost/size estimates with help of remote server.  Save the
 		 * values in fpinfo so we don't need to do it again to generate the
 		 * basic foreign path.
@@ -542,6 +585,11 @@ postgresGetForeignPaths(PlannerInfo *root,
 	ForeignPath *path;
 	List	   *ppi_list;
 	ListCell   *lc;
+
+	/* TODO: FOR SHARE/UPDATE cluase may hang, check if it's the case for 6x.
+	if (hasLockingClause(root, baserel))
+		ereport(ERROR, (errmsg("locking clause is not supported for postgres_fdw")));
+	*/
 
 	/*
 	 * Create simplest ForeignScan path node and add it to baserel.  This path
@@ -915,14 +963,84 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 	server = GetForeignServer(table->serverid);
 	user = GetUserMapping(userid, server->serverid);
 
+	fsstate->is_gp_retrieve =
+		(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS &&
+		 Gp_role == GP_ROLE_EXECUTE);
+
+	fsstate->is_gp_parallel_retrieve_cursor =
+		(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS &&
+		 Gp_role == GP_ROLE_DISPATCH);
+	if (fsstate->is_gp_parallel_retrieve_cursor)
+	{
+		int seg_number = get_remote_segment_number(server, user);
+		if (seg_number!= table->segment_number)
+			ereport(ERROR, (errmsg("Option segment_number %d doesn't match remote "
+					"segment number %d", table->segment_number, seg_number)));
+	}
 	/*
 	 * Get connection to the foreign server.  Connection manager will
 	 * establish new connection if necessary.
 	 */
-	fsstate->conn = GetConnection(server, user, false);
+	if (!fsstate->is_gp_retrieve)
+	{
+		fsstate->conn = GetConnection(server, user, false);
 
-	/* Assign a unique ID for my cursor */
-	fsstate->cursor_number = GetCursorNumber(fsstate->conn);
+		/* Assign a unique ID for my cursor */
+		fsstate->cursor_number = GetCursorNumber(fsstate->conn);
+	}
+	else
+	{
+		Value	*host;
+		Value	*port;
+		int32    dbid;
+		char	*auth_token;
+		Value   *foreign_username;
+		int		 process_no = -1;
+		int		 server_gp_session_id;
+
+		/* Get the process nth number in current gang */
+		{
+			Slice *current_slice = list_nth(node->ss.ps.state->es_sliceTable->slices, currentSliceId);
+
+			int num = -1;
+			while ((num = bms_next_member(current_slice->processesMap, num)) >= 0)
+			{
+				process_no++;
+				if (qe_identifier == num)
+					break;
+			}
+		}
+
+		foreign_username = list_nth(fsplan->fdw_private, FdwScanPrivateUserName);
+		fsstate->endpoint_name = strVal(list_nth(fsplan->fdw_private, FdwScanPrivateEndpointName));
+		fsstate->endpoints = list_nth(fsplan->fdw_private, FdwScanPrivateEndpoints);
+		server_gp_session_id = intVal(list_nth(fsplan->fdw_private, FdwScanPrivateEndpointSessionId));
+
+		if (process_no < 0)
+			ereport(ERROR, (errmsg("No valid slice number")));
+
+		if (process_no < list_length(fsstate->endpoints))
+		{
+			List *endpoint = list_nth(fsstate->endpoints, process_no);
+			host = list_nth(endpoint, 0);
+			port = list_nth(endpoint, 1);
+			dbid = atoi(strVal(list_nth(endpoint, 2)));
+			auth_token = list_nth(endpoint, 3);
+
+			/* Customize the fdw connection for cursor retrieve. */
+			List *server_options;
+			server_options = NIL;
+			server_options = lappend(server_options, makeDefElem(pstrdup("host"), (Node *)host));
+			server_options = lappend(server_options, makeDefElem(pstrdup("port"), (Node *)port));
+			/* dbname will be populated in GetCustomConnection() since we need to get the database name there. */
+			server_options = lappend(server_options, makeDefElem(pstrdup("options"), (Node *)makeString("-c gp_retrieve_conn=true")));
+
+			user->options = NIL;
+			user->options = lappend(user->options, makeDefElem(pstrdup("user"), (Node *)foreign_username));
+			user->options = lappend(user->options, makeDefElem(pstrdup("password"), (Node *)auth_token));
+			fsstate->conn = GetCustomConnection(server, user, false, true, dbid, server_options, server_gp_session_id);
+		}
+	}
 	fsstate->cursor_exists = false;
 
 	/* Get private info created by planner functions. */
@@ -982,6 +1100,14 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 		fsstate->param_values = (const char **) palloc0(numParams * sizeof(char *));
 	else
 		fsstate->param_values = NULL;
+
+	/*
+	 * Should not run it in postgresIterateForeignScan() like what
+	 * create_cursor() does since we need to dispatch the endpoints information
+	 * to QE in advance.
+	 */
+	if (fsstate->is_gp_parallel_retrieve_cursor)
+		create_parallel_retrieve_cursor(node);
 }
 
 /*
@@ -1102,6 +1228,13 @@ postgresEndForeignScan(ForeignScanState *node)
 	/* Release remote connection */
 	ReleaseConnection(fsstate->conn);
 	fsstate->conn = NULL;
+
+	/* gpdb: Release retrieve connection specific variable. */
+	if (fsstate->endpoint_name)
+	{
+		pfree(fsstate->endpoint_name);
+		fsstate->endpoint_name = NULL;
+	}
 
 	/* MemoryContexts will be deleted automatically. */
 }
@@ -1678,8 +1811,9 @@ postgresIsForeignRelUpdatable(Relation rel)
 	 * the hidden column gp_segment_id and the other "ModifyTable mixes
 	 * distributed and entry-only tables" issue.
 	 */
-	UserMapping *user = GetUserMapping(rel->rd_rel->relowner, table->serverid);
-	if (greenplumCheckIsGreenplum(server, user))
+	UserMapping *user;
+	user = GetUserMapping(GetUserId(), server->serverid);
+	if (is_remote_gp_cluster(server, user))
 		return (1 << CMD_INSERT);
 	else
 		return (1 << CMD_INSERT) | (1 << CMD_UPDATE) | (1 << CMD_DELETE);
@@ -1694,10 +1828,24 @@ postgresExplainForeignScan(ForeignScanState *node, ExplainState *es)
 {
 	List	   *fdw_private;
 	char	   *sql;
+	char	   *relations;
 
+	fdw_private = ((ForeignScan *) node->ss.ps.plan)->fdw_private;
+	/*
+	 * Add names of relation handled by the foreign scan when the scan is a
+	 * join
+	 */
+	if (list_length(fdw_private) > FdwScanPrivateRelations)
+	{
+		relations = strVal(list_nth(fdw_private, FdwScanPrivateRelations));
+		ExplainPropertyText("Relations", relations, es);
+	}
+
+	/*
+	 * Add remote query, when VERBOSE option is specified.
+	 */
 	if (es->verbose)
 	{
-		fdw_private = ((ForeignScan *) node->ss.ps.plan)->fdw_private;
 		sql = strVal(list_nth(fdw_private, FdwScanPrivateSelectSql));
 		ExplainPropertyText("Remote SQL", sql, es);
 	}
@@ -1746,6 +1894,19 @@ estimate_path_cost_size(PlannerInfo *root,
 	Cost		total_cost;
 	Cost		run_cost;
 	Cost		cpu_per_tuple;
+
+	/*
+	 * TODO: backport cost adjustment part when estimate_path_cost_size is ready.
+	 *
+	 * gpdb: used to adjust cost. We do not adjust p_rows but let
+	 * create_foreignscan_path() adjust the path rows. This seems to be the
+	 * solution that affects pg merge the least. If we adjust p_rows here,
+	 * callers of this functions could be wrong sometimes (when
+	 * use_remote_estimate is true) and also this makes the code depend on how
+	 * the callers use p_rows thus make the code fragile.
+	 */
+	/* int numsegments = planner_segment_count(baserel->cdbpolicy);*/
+
 
 	/*
 	 * If the table or the server is configured to use remote estimates,
@@ -1962,6 +2123,10 @@ create_cursor(ForeignScanState *node)
 	StringInfoData buf;
 	PGresult   *res;
 
+	/* No need to create a cursor for the retrieve connection. */
+	if (fsstate->is_gp_retrieve)
+		return;
+
 	/*
 	 * Construct array of query parameter values in text format.  We do the
 	 * conversions in the short-lived per-tuple context, so as not to cause a
@@ -2007,7 +2172,11 @@ create_cursor(ForeignScanState *node)
 
 	/* Construct the DECLARE CURSOR command */
 	initStringInfo(&buf);
-	appendStringInfo(&buf, "DECLARE c%u CURSOR FOR\n%s",
+	if (fsstate->is_gp_parallel_retrieve_cursor)
+		appendStringInfo(&buf, "DECLARE c%u PARALLEL RETRIEVE CURSOR FOR\n%s",
+						 fsstate->cursor_number, fsstate->query);
+	else
+		appendStringInfo(&buf, "DECLARE c%u CURSOR FOR\n%s",
 					 fsstate->cursor_number, fsstate->query);
 
 	/*
@@ -2073,9 +2242,18 @@ fetch_more_data(ForeignScanState *node)
 
 		/* The fetch size is arbitrary, but shouldn't be enormous. */
 		fetch_size = 100;
+		if (conn == NULL)
+		{
+			fsstate->eof_reached = true;
+			return;
+		}
 
-		snprintf(sql, sizeof(sql), "FETCH %d FROM c%u",
-				 fetch_size, fsstate->cursor_number);
+		if (fsstate->is_gp_retrieve)
+			snprintf(sql, sizeof(sql), "RETRIEVE %d FROM ENDPOINT %s",
+				fetch_size, fsstate->endpoint_name);
+		else
+			snprintf(sql, sizeof(sql), "FETCH %d FROM c%u",
+				fetch_size, fsstate->cursor_number);
 
 		res = pgfdw_exec_query(conn, sql);
 		/* On error, report the original query, not the FETCH. */
@@ -2778,12 +2956,12 @@ conversion_error_callback(void *arg)
 				   RelationGetRelationName(errpos->rel));
 }
 
-static int
-greenplumCheckIsGreenplum(ForeignServer *server, UserMapping *user)
+static bool
+is_remote_gp_cluster(ForeignServer* server, UserMapping *user)
 {
 	PGconn     *conn;
 	PGresult   *res;
-	int                     ret;
+	bool		ret;
 
 	char *query =  "SELECT version()";
 
@@ -2796,10 +2974,154 @@ greenplumCheckIsGreenplum(ForeignServer *server, UserMapping *user)
 	if (PQntuples(res) == 0)
 		pgfdw_report_error(ERROR, res, conn, true, query);
 
-	ret = strstr(PQgetvalue(res, 0, 0), "Greenplum Database") ? 1 : 0;
+	ret = strstr(PQgetvalue(res, 0, 0), "Greenplum Database") ? true : false;
 
 	PQclear(res);
 	ReleaseConnection(conn);
 
 	return ret;
+}
+
+static int
+get_remote_segment_number(ForeignServer* server, UserMapping *user)
+{
+	PGconn	   *conn;
+	PGresult   *res;
+	int			size;
+
+	char *query =  "SELECT count(DISTINCT content) FROM pg_catalog.gp_segment_configuration WHERE content >= 0";
+
+	conn = GetConnection(server, user, false);
+
+	res = pgfdw_exec_query(conn, query);
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		pgfdw_report_error(ERROR, res, conn, true, query);
+
+	if (PQntuples(res) == 0)
+		pgfdw_report_error(ERROR, res, conn, true, query);
+
+	size = pg_atoi(PQgetvalue(res, 0, 0), sizeof(int), 0);
+
+	PQclear(res);
+	ReleaseConnection(conn);
+
+	return size;
+}
+
+static void
+get_remote_gp_session_id(PGconn *conn, int *session_id)
+{
+	PGresult   *res;
+
+	res = pgfdw_exec_query(conn, "SHOW gp_session_id");
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pgfdw_report_error(ERROR, res, conn, true, "SHOW gp_session_id");
+	}
+
+	*session_id = atoi(PQgetvalue(res, 0, 0));
+	PQclear(res);
+}
+
+static void
+get_endpoints_info(PGconn *conn,
+				   int cursor_number,
+				   int session_id,
+				   List **fdw_private)
+{
+	StringInfoData	 sql_buf;
+	PGresult		*res;
+	List			*endpoints;
+	char			*foreign_username = NULL;
+	char			*endpoint_name = NULL;
+	char			*auth_token;
+
+	initStringInfo(&sql_buf);
+	appendStringInfo(&sql_buf,
+					 "SELECT hostname, port, dbid, auth_token, pg_get_userbyid(userid), endpointname  FROM gp_endpoints() "
+					 "WHERE sessionid=%d AND cursorname = 'c%d'",
+					 session_id, cursor_number);
+
+	res = pgfdw_exec_query(conn, sql_buf.data);
+
+	if (PQresultStatus(res) != PGRES_TUPLES_OK ||
+		PQntuples(res) == 0 ||
+		PQnfields(res) != 6)
+	{
+		pgfdw_report_error(ERROR, res, conn, true, sql_buf.data);
+	}
+
+	endpoints = NIL;
+	for (int row = 0; row < PQntuples(res); row++)
+	{
+		char	   *host;
+		char	   *port;
+		char	   *dbid;
+		List	   *endpoint = NIL;
+
+		host = pstrdup(PQgetvalue(res, row, 0));
+		port = pstrdup(PQgetvalue(res, row, 1));
+		dbid = pstrdup(PQgetvalue(res, row, 2));
+		auth_token = pstrdup(PQgetvalue(res, row, 3));
+		if (row == 0)
+		{
+			foreign_username = pstrdup(PQgetvalue(res, row, 4));
+			endpoint_name = pstrdup(PQgetvalue(res, row, 5));
+		}
+
+		endpoint = list_make4(makeString(host), makeString(port), makeString(dbid), makeString(auth_token));
+		endpoints = lappend(endpoints, endpoint);
+	}
+
+	/* The order should be same as enum FdwScanPrivateIndex definition */
+	*fdw_private = lappend(*fdw_private, endpoints);
+	*fdw_private = lappend(*fdw_private, makeString(foreign_username));
+	*fdw_private = lappend(*fdw_private, makeString(endpoint_name));
+	*fdw_private = lappend(*fdw_private, makeInteger(session_id));
+
+	PQclear(res);
+}
+
+static void
+create_parallel_retrieve_cursor(ForeignScanState *node)
+{
+	PgFdwScanState	*fsstate = (PgFdwScanState *) node->fdw_state;
+	ForeignScan		*foreign_scan;
+	int				 session_id;
+	int				 list_len;
+
+	create_cursor(node);
+	foreign_scan = (ForeignScan *) node->ss.ps.plan;
+	get_remote_gp_session_id(fsstate->conn, &session_id);
+	list_len = list_length(foreign_scan->fdw_private);
+	if (list_len == FdwScanPrivateRelations)
+	{
+		/*
+		 * Create a dummy entry so that we could populate fdw_private later
+		 * correctly.
+		 */
+		foreign_scan->fdw_private = lappend(foreign_scan->fdw_private, makeString(""));
+
+	}
+	else if (list_len != (FdwScanPrivateRelations + 1))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("fdw_private was not correctly populated (length: %d)",
+						list_len)));
+	}
+
+	get_endpoints_info(fsstate->conn, fsstate->cursor_number, session_id,
+					   &foreign_scan->fdw_private);
+}
+
+static void
+set_optimizer_off(ForeignServer* server, UserMapping *user)
+{
+	PGconn	   *conn;
+
+	conn = GetConnection(server, user, false);
+	PGresult *res = pgfdw_exec_query(conn, "SET optimizer=off");
+	PQclear(res);
+	ReleaseConnection(conn);
 }

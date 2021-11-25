@@ -673,3 +673,8 @@ INSERT INTO rem1(f2) VALUES ('test');
 
 -- Test returning a system attribute
 INSERT INTO rem1(f2) VALUES ('test') RETURNING ctid;
+
+-- Clean up
+DROP FUNCTION trig_row_before_insupdate() CASCADE;
+DROP FUNCTION trig_null() CASCADE;
+DROP FUNCTION trigger_func() CASCADE;

@@ -53,6 +53,7 @@ typedef struct ForeignServer
 	char	   *serverversion;	/* server version, optional */
 	List	   *options;		/* srvoptions as DefElem list */
 	char		exec_location;  /* execute on MASTER, ANY or ALL SEGMENTS, Greenplum MPP specific */
+	int32		segment_number;	/* segment number of the foreign cluster */
 } ForeignServer;
 
 typedef struct UserMapping
@@ -68,10 +69,12 @@ typedef struct ForeignTable
 	Oid			serverid;		/* server Oid */
 	List	   *options;		/* ftoptions as DefElem list */
 	char		exec_location;  /* execute on MASTER, ANY or ALL SEGMENTS, Greenplum MPP specific */
+	int32		segment_number;	/* segment number of the foreign cluster */
 } ForeignTable;
 
 
 extern char SeparateOutMppExecute(List **options);
+extern int32 SeparateOutSegmentNumber(List **options);
 extern ForeignServer *GetForeignServer(Oid serverid);
 extern ForeignServer *GetForeignServerByName(const char *name, bool missing_ok);
 extern UserMapping *GetUserMapping(Oid userid, Oid serverid);

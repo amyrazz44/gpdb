@@ -3065,7 +3065,16 @@ create_foreignscan_path(PlannerInfo *root, RelOptInfo *rel,
 			CdbPathLocus_MakeGeneral(&(pathnode->path.locus), getgpsegmentCount());
 			break;
 		case FTEXECLOCATION_ALL_SEGMENTS:
-			CdbPathLocus_MakeStrewn(&(pathnode->path.locus), getgpsegmentCount());
+			if (rel->ftEntry && rel->ftEntry->segment_number > 0)
+			{
+				CdbPathLocus_MakeStrewn(&(pathnode->path.locus), rel->ftEntry->segment_number);
+				pathnode->path.rows = clamp_row_est(pathnode->path.rows/rel->ftEntry->segment_number);
+			}
+			else
+			{
+				CdbPathLocus_MakeStrewn(&(pathnode->path.locus), getgpsegmentCount());
+				pathnode->path.rows = clamp_row_est(pathnode->path.rows/getgpsegmentCount());
+			}
 			break;
 		case FTEXECLOCATION_MASTER:
 			CdbPathLocus_MakeEntry(&(pathnode->path.locus));

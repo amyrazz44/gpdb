@@ -1383,3 +1383,17 @@ AS
    UNION ALL
    SELECT pg_catalog.gp_execution_segment() as gp_segment_id, * FROM pg_catalog.pg_tablespace_location($1)'
 LANGUAGE SQL EXECUTE ON MASTER;
+
+-- For parallel retrieve cursor
+CREATE FUNCTION gp_session_endpoints (OUT gp_segment_id int, OUT auth_token text,
+									  OUT cursorname text, OUT sessionid int, OUT hostname text,
+									  OUT port int, OUT userid oid, OUT state text,
+									  OUT endpointname text)
+RETURNS SETOF RECORD AS
+$$
+   SELECT * FROM gp_endpoints()
+	WHERE sessionid = (SELECT setting FROM pg_settings WHERE name = 'gp_session_id')::int4
+$$
+LANGUAGE SQL EXECUTE ON MASTER;
+
+COMMENT ON FUNCTION gp_session_endpoints() IS 'All endpoints in this session that are visible to the current user.';
